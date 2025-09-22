@@ -69,60 +69,6 @@ scholarship_platform/
 - Node.js 20+
 - pnpm package manager
 
-### Backend Setup
-
-1. Navigate to the backend directory:
-```bash
-cd scholarship_platform_backend
-```
-
-2. Activate the virtual environment:
-```bash
-source venv/bin/activate
-```
-
-3. Install dependencies (already installed):
-```bash
-pip install flask flask-sqlalchemy flask-cors scrapy google-generativeai
-```
-
-4. Set environment variables:
-```bash
-export GEMINI_API_KEY="your-gemini-api-key"
-```
-
-5. Start the Flask server:
-```bash
-python src/main.py
-```
-
-The backend will be available at `http://localhost:5000`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-```bash
-cd scholarship_platform_frontend
-```
-
-2. Install dependencies (already installed):
-```bash
-pnpm install
-```
-
-3. Start the development server:
-```bash
-pnpm run dev --host
-```
-
-The frontend will be available at `http://localhost:5173`
-
-## Usage
-
-### Admin Access
-- **Email**: admin@scholarsync.com
-- **Password**: admin123
-
 ### User Registration
 1. Visit the signup page
 2. Fill in personal and academic information
@@ -208,9 +154,9 @@ The platform uses Google's Gemini API for:
 ## Web Scraping
 
 Automated scrapers collect data from:
-- opportunitydesk.org
-- myschoolgist.com
-- scholarshippark.com
+- opportunitydesk.org (working)
+- myschoolgist.com (not working at the moment)
+- scholarshippark.com (not working at the moment)
 
 Scrapers extract:
 - Scholarship titles and descriptions
@@ -234,23 +180,6 @@ Scrapers extract:
 5. **Payment Integration**: Premium features and services
 6. **Social Features**: User communities and forums
 
-## Troubleshooting
-
-### Common Issues
-
-1. **CORS Errors**: Ensure Flask-CORS is properly configured
-2. **Database Errors**: Delete and recreate the database if schema changes
-3. **API Connection**: Check that both frontend and backend are running
-4. **Gemini API Errors**: Verify API key and quota limits
-
-### Development Tips
-
-1. Use browser developer tools to debug API calls
-2. Check Flask console for backend errors
-3. Monitor network requests for CORS issues
-4. Verify database state using SQLite browser
-5. Check Gemini API usage in Google Cloud Console
-
 ## Contributing
 
 1. Fork the repository
@@ -258,10 +187,6 @@ Scrapers extract:
 3. Make your changes
 4. Test thoroughly
 5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
 
 ## Support
 
