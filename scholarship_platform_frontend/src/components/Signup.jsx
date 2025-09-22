@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { BASE_URL } from '@/lib/utils'
 
 const Signup = ({ onSignup }) => {
   const [formData, setFormData] = useState({
@@ -45,19 +46,21 @@ const Signup = ({ onSignup }) => {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/signup', {
+      const response = await fetch(`${BASE_URL}/api/auth/signup`, {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
+        credentials: 'include',
       })
 
       const data = await response.json()
 
       if (response.ok) {
         // Auto-login after successful signup
-        const loginResponse = await fetch('/api/auth/login', {
+        console.log("re-routing to sign-in")
+        const loginResponse = await fetch(`${BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -66,6 +69,7 @@ const Signup = ({ onSignup }) => {
             email: formData.email,
             password: formData.password
           }),
+          credentials: 'include',
         })
 
         if (loginResponse.ok) {

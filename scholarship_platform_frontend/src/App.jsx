@@ -19,7 +19,7 @@ function App() {
 
   const checkAuthStatus = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/me')
+      const response = await fetch('http://localhost:5000/api/auth/me', { credentials: 'include' })
       if (response.ok) {
         const userData = await response.json()
         setUser(userData)
@@ -37,7 +37,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:5000/api/auth/logout', { method: 'POST' })
+      await fetch('http://localhost:5000/api/auth/logout', { method: 'POST', credentials: 'include' })
       setUser(null)
     } catch (error) {
       console.error('Logout failed:', error)

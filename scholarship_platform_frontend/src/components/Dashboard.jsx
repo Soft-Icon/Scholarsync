@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { User, LogOut, Search, MessageCircle, Settings } from 'lucide-react'
 import Sidebar from './Sidebar'
+import { BASE_URL } from '@/lib/utils'
 
 const Dashboard = ({ user, onLogout }) => {
   const [suggestedScholarships, setSuggestedScholarships] = useState([])
@@ -30,16 +31,18 @@ const Dashboard = ({ user, onLogout }) => {
 
   const triggerAIMatching = async () => {
     try {
-      await fetch('/api/ai/match-scholarships', {
+      const response = await fetch(`${BASE_URL}/api/ai/match-scholarships`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       })
-      // Refresh suggested scholarships after AI matching
-      setTimeout(() => {
+      if (response.ok) {
         fetchSuggestedScholarships()
-      }, 1000)
+      } else {
+        console.error('AI matching failed with status:', response.status)
+      }
     } catch (error) {
       console.error('AI matching failed:', error)
     }
@@ -47,7 +50,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchSuggestedScholarships = async () => {
     try {
-      const response = await fetch('/api/scholarships/suggested')
+      const response = await fetch(`${BASE_URL}/api/scholarships/suggested`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setSuggestedScholarships(data.suggested_scholarships || [])
@@ -61,7 +64,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchApplications = async () => {
     try {
-      const response = await fetch('/api/applications/')
+      const response = await fetch(`${BASE_URL}/api/applications/`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setApplications(data.applications || [])
@@ -78,7 +81,7 @@ const Dashboard = ({ user, onLogout }) => {
         if (value) params.append(key, value)
       })
 
-      const response = await fetch(`/api/scholarships/?${params}`)
+      const response = await fetch(`${BASE_URL}/api/scholarships/?${params}`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setSearchResults(data.scholarships || [])
@@ -138,7 +141,7 @@ const Dashboard = ({ user, onLogout }) => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <Select onValueChange={(value) => setSearchFilters({...searchFilters, country: value})}>
+                <Select onValueChange={(value) => setSearchFilters({...searchFilters, country_info: value})}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
@@ -194,7 +197,7 @@ const Dashboard = ({ user, onLogout }) => {
                     <Card key={scholarship.id} className="hover:shadow-lg transition-shadow">
                       <CardHeader>
                         <div className="flex items-start justify-between">
-                          <Badge variant="outline">{scholarship.country}</Badge>
+                          <Badge variant="outline">{scholarship.country_info}</Badge>
                         </div>
                         <CardTitle className="text-lg">{scholarship.title}</CardTitle>
                         <CardDescription>
@@ -240,7 +243,7 @@ const Dashboard = ({ user, onLogout }) => {
                     <Card key={scholarship.id} className="hover:shadow-lg transition-shadow">
                       <CardHeader>
                         <div className="flex items-start justify-between">
-                          <Badge variant="outline">{scholarship.country}</Badge>
+                          <Badge variant="outline">{scholarship.country_info}</Badge>
                           <span className={`text-sm font-semibold ${getMatchColor(scholarship.match_percentage)}`}>
                             Match: {scholarship.match_percentage}%
                           </span>

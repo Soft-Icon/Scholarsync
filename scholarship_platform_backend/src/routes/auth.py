@@ -40,6 +40,7 @@ def login():
     if user and user.check_password(data['password']):
         session['user_id'] = user.id
         session['is_admin'] = user.is_admin
+        print(f"DEBUG: Session after login - user_id: {session.get('user_id')}, is_admin: {session.get('is_admin')}")
         return jsonify({
             'message': 'Login successful',
             'user': {
@@ -60,8 +61,10 @@ def logout():
 @auth_bp.route('/me', methods=['GET'])
 def get_current_user():
     if 'user_id' not in session:
+        print("DEBUG: get_current_user - user_id not in session")
         return jsonify({'error': 'Not authenticated'}), 401
     
+    print(f"DEBUG: get_current_user - session user_id: {session.get('user_id')}")
     user = User.query.get(session['user_id'])
     if not user:
         return jsonify({'error': 'User not found'}), 404

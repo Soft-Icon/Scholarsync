@@ -1,493 +1,412 @@
 import scrapy
-from datetime import datetime
-from scholarship_scraper.items import ScholarshipItem
-from urllib.parse import urljoin, urlparse
 import re
-import json
+from urllib.parse import urljoin, urlparse
+from scrapy.http import Request
+from ..items import ScholarshipScraperItem
 
-class OpportunitydeskSpider(scrapy.Spider):
-    name = "opportunitydesk"
-    allowed_domains = ["opportunitydesk.org"]
-    start_urls = ["https://opportunitydesk.org"]
- 
-    # Add custom settings to handle potential blocking
+
+class ScholarshipSpider(scrapy.Spider):
+    name = 'opportunitydesk_scholarships'
+    allowed_domains = ['opportunitydesk.org']
+    start_urls = ['https://opportunitydesk.org/category/fellowships-and-scholarships/undergraduate/']
+    
     custom_settings = {
-        'DOWNLOAD_DELAY': 2,
-        'RANDOMIZE_DOWNLOAD_DELAY': True,
+        'DOWNLOAD_DELAY': 2,  # Be respectful to the server
+        'RANDOMIZE_DOWNLOAD_DELAY': 0.5,
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'ROBOTSTXT_OBEY': True,
     }
-    
+
     def parse(self, response):
-        """
-        Parse the scholarship listing page and follow links to detail pages.
-        Also handles pagination.
-        """
-        # Check if the response is valid
-        if response.status != 200:
-            self.logger.error(f"Failed to load page: {response.url} - Status: {response.status}")
-            return
+        """Parse the main scholarship listing page"""
+        # Extract individual scholarship links
+        scholarship_links = response.css('article h2 a::attr(href)').getall()
         
-        # Debug: Print page title to confirm we're on the right page
-        page_title = response.css('title::text').get()
-        if page_title:
-            self.logger.info(f"Parsing page: {page_title}")
-        else:
-            self.logger.warning(f"No title found for page: {response.url}")
+        # Alternative selectors in case the structure is different
+        if not scholarship_links:
+            scholarship_links = response.css('article .entry-title a::attr(href)').getall()
         
-        # Try multiple selectors for scholarship links based on actual page structure
-        scholarship_links = []
+        if not scholarship_links:
+            scholarship_links = response.css('a[href*="/20"]::attr(href)').re(r'https://opportunitydesk\.org/\d{4}/\d{2}/\d{2}/[^"]+')
         
-        # Method 1: Look for links in article titles
-        scholarship_links.extend(response.css('article h2 a::attr(href)').getall())
-        scholarship_links.extend(response.css('article h3 a::attr(href)').getall())
-        scholarship_links.extend(response.css('.entry-title a::attr(href)').getall())
+        self.logger.info(f"Found {len(scholarship_links)} scholarship links on page")
         
-        # Method 2: Look for links in post content
-        scholarship_links.extend(response.css('.post-title a::attr(href)').getall())
-        scholarship_links.extend(response.css('.entry-header a::attr(href)').getall())
-        
-        # Method 3: WordPress specific selectors
-        scholarship_links.extend(response.css('h2.entry-title a::attr(href)').getall())
-        scholarship_links.extend(response.css('h1.entry-title a::attr(href)').getall())
-        scholarship_links.extend(response.css('.post h2 a::attr(href)').getall())
-        
-        # Method 4: Generic approach - find all links that might be scholarship posts
-        all_links = response.css('a::attr(href)').getall()
-        for link in all_links:
-            if link and self._is_scholarship_link(link):
-                scholarship_links.append(link)
-        
-        # Remove duplicates while preserving order and validate URLs
-        scholarship_links = list(dict.fromkeys(scholarship_links))
-        valid_links = []
-        
+        # Visit each scholarship page
         for link in scholarship_links:
-            if link and self._is_valid_url(link, response.url):
-                valid_links.append(link)
+            if link:
+                absolute_url = urljoin(response.url, link)
+                yield Request(
+                    url=absolute_url,
+                    callback=self.parse_scholarship,
+                    meta={'scholarship_url': absolute_url}
+                )
         
-        self.logger.info(f"Found {len(valid_links)} valid scholarship links")
+        # Handle pagination - but only follow first 2 pages to avoid old scholarships
+        current_page = response.meta.get('page_number', 1)
+        max_pages = 2  # Limit to first 2 pages to avoid old scholarships
         
-        # Follow each scholarship link
-        for link in valid_links[:10]:  # Limit to first 10 for testing
-            yield response.follow(link, callback=self.parse_scholarship, 
-                                errback=self.handle_error)
-        
-        # Follow pagination - try multiple pagination selectors
-        next_page = self._find_next_page(response)
-        
-        if next_page:
-            self.logger.info(f"Following pagination: {next_page}")
-            yield response.follow(next_page, callback=self.parse,
-                                errback=self.handle_error)
-    
-    def _is_scholarship_link(self, link):
-        """Check if a link is likely to be a scholarship post"""
-        if not link:
-            return False
-        
-        link_lower = link.lower()
-        scholarship_indicators = [
-            'scholarship', 'fellowship', 'grant', 'bursary', 
-            'funding', 'award', 'financial-aid'
-        ]
-        
-        # Check if link contains scholarship-related terms
-        for indicator in scholarship_indicators:
-            if indicator in link_lower:
-                return True
-        
-        # Check if it's a date-based URL (common for blog posts)
-        if re.search(r'/20\d{2}/', link):
-            return True
-        
-        return False
-    
-    def _is_valid_url(self, url, base_url):
-        """Validate URL format and domain"""
-        try:
-            if url.startswith('/'):
-                url = urljoin(base_url, url)
+        if current_page < max_pages:
+            next_page = response.css('.next.page-numbers::attr(href)').get()
+            if not next_page:
+                next_page = response.css('a.next::attr(href)').get()
             
-            parsed = urlparse(url)
-            return (parsed.scheme in ['http', 'https'] and 
-                   'opportunitydesk.org' in parsed.netloc)
-        except Exception:
-            return False
-    
-    def _find_next_page(self, response):
-        """Find next page link using multiple selectors"""
-        pagination_selectors = [
-            '.pagination a.next::attr(href)',
-            '.pagination .next::attr(href)', 
-            '.nav-links .next::attr(href)',
-            '.page-numbers.next::attr(href)',
-            'a:contains("Next")::attr(href)',
-            'a:contains("›")::attr(href)',
-            'a[rel="next"]::attr(href)'
-        ]
-        
-        for selector in pagination_selectors:
-            next_page = response.css(selector).get()
             if next_page:
-                return next_page
-        
-        return None
-    
+                self.logger.info(f"Following next page: {next_page} (Page {current_page + 1})")
+                yield Request(
+                    url=urljoin(response.url, next_page),
+                    callback=self.parse,
+                    meta={'page_number': current_page + 1}
+                )
+        else:
+            self.logger.info(f"Reached maximum pages ({max_pages}). Stopping pagination to avoid old scholarships.")
+
+    def is_current_scholarship(self, deadline_text, content):
+        """Check if scholarship is current/recent (2025 or late 2024)"""
+        if not deadline_text and not content:
+            return True  # Include if we can't determine date
+            
+        # Check for 2025 dates
+        if re.search(r'202[5-9]', deadline_text or content or ''):
+            return True
+            
+        # Check for late 2024 dates (November, December 2024)
+        if re.search(r'(?:November|December|Nov|Dec)[^0-9]*202[4]', deadline_text or content or '', re.IGNORECASE):
+            return True
+            
+        # If contains 2023 or early 2024, likely old
+        if re.search(r'202[0-3]', deadline_text or content or ''):
+            return False
+            
+        return True  # Default to include if uncertain
+
     def parse_scholarship(self, response):
-        """
-        Parse the scholarship detail page and extract required information.
-        """
-        if response.status != 200:
-            self.logger.error(f"Failed to load scholarship page: {response.url} - Status: {response.status}")
-            return
+        """Parse individual scholarship page"""
+        scholarship_url = response.meta.get('scholarship_url', response.url)
         
-        self.logger.info(f"Parsing scholarship page: {response.url}")
+        # Extract title
+        title = response.css('h1.entry-title::text').get()
+        if not title:
+            title = response.css('title::text').get()
         
-        # Extract title with multiple fallbacks
-        title_selectors = [
-            'h1.entry-title::text',
-            'h1.post-title::text', 
-            'h1::text',
-            '.entry-title::text',
-            '.post-title::text',
-            'title::text'
-        ]
+        # Extract deadline
+        deadline = self.extract_deadline(response)
         
-        title_element = None
-        for selector in title_selectors:
-            title_element = response.css(selector).get()
-            if title_element:
-                break
-        
-        if not title_element:
-            self.logger.warning(f"No title found for URL: {response.url}")
-            return
-        
-        title_element = title_element.strip()
-        
-        # Get content for keyword checking
-        content_text = self._extract_content_text(response)
-        title_text = title_element.lower()
-        
-        # Skip if not a scholarship
-        scholarship_keywords = ['scholarship', 'grant', 'fellowship', 'financial aid', 'bursary', 'funding']
-        if not any(keyword in content_text.lower() or keyword in title_text for keyword in scholarship_keywords):
-            self.logger.info(f"Skipping non-scholarship content: {response.url}")
-            return
-        
-        # Create item
-        item = ScholarshipItem()
-        
-        # Core fields
-        item['name'] = title_element
-        item['source_url'] = response.url
-        item['source_website'] = 'opportunitydesk.org'
-        item['extracted_date'] = datetime.now().strftime('%Y-%m-%d')
-        
-        # Extract structured content
-        full_content = self._extract_full_content(response)
-        item['description'] = full_content
-        
-        # Extract specific fields
-        item['provider'] = self._extract_provider(title_element, full_content)
-        item['deadline'] = self._extract_deadline(full_content)
-        item['country'] = self._extract_country(title_element, full_content)
-        item['level_of_study'] = self._extract_level_of_study(response.url, title_element, full_content)
-        item['field_of_study'] = self._extract_field_of_study(full_content)
-        item['eligibility'] = self._extract_structured_section(response, full_content, 'eligibility')
-        item['benefits'] = self._extract_structured_section(response, full_content, 'benefits')
-        item['application_link'] = self._extract_application_link(response, full_content)
-        item['contact_email'] = self._extract_email(full_content)
-        item['gender_requirements'] = self._extract_gender_requirements(title_element, full_content)
-        item['nationality_requirements'] = self._extract_nationality_requirements(full_content)
-        item['institution_requirements'] = self._extract_institution_requirements(full_content)
-        item['cgpa_requirements'] = self._extract_cgpa_requirements(full_content)
-        
-        return item
-    
-    def _extract_content_text(self, response):
-        """Extract plain text content for keyword checking"""
-        content_selectors = [
-            '.entry-content *::text',
-            '.post-content *::text',
-            '.content *::text',
-            'article *::text'
-        ]
-        
-        for selector in content_selectors:
-            content_parts = response.css(selector).getall()
-            if content_parts:
-                return ' '.join(content_parts)
-        
-        # Fallback
-        return ' '.join(response.css('p::text, li::text').getall())
-    
-    def _extract_full_content(self, response):
-        """Extract full structured content"""
+        # Extract main content
         content_selectors = [
             '.entry-content',
-            '.post-content',
-            '.content',
-            'article'
+            '.post-content', 
+            'article .content',
+            '.single-post-content'
         ]
         
+        content = None
         for selector in content_selectors:
-            content_element = response.css(selector).get()
-            if content_element:
-                # Extract text while preserving some structure
-                text_parts = response.css(f'{selector} p::text, {selector} li::text, {selector} h2::text, {selector} h3::text').getall()
-                return ' '.join(text_parts) if text_parts else content_element
+            content = response.css(selector).get()
+            if content:
+                break
         
-        # Fallback
-        return ' '.join(response.css('p::text, li::text, h2::text, h3::text').getall())
-    
-    def _extract_provider(self, title, content):
-        """Extract scholarship provider"""
-        # Try pattern matching first
-        provider_patterns = [
-            r'(?:offered by|provided by|sponsored by|from)\s+([^,.]+)',
-            r'(?:by)\s+([A-Z][^,.]{3,50})',
-        ]
+        if not content:
+            # Fallback to get all text content
+            content = ' '.join(response.css('article *::text').getall())
         
-        for pattern in provider_patterns:
-            match = re.search(pattern, content, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+        # Filter out old scholarships
+        if not self.is_current_scholarship(deadline, content):
+            self.logger.info(f"Skipping old scholarship: {title}")
+            return
         
-        # Try to extract from title
-        if ' at ' in title:
-            parts = title.split(' at ')
-            if len(parts) > 1:
-                return parts[1].strip()
+        # Extract structured information
+        description = self.extract_description(response, content)
+        eligibility = self.extract_eligibility(response, content)
+        application_urls = self.extract_application_urls(response, content)
         
-        return ''
-    
-    def _extract_deadline(self, content):
-        """Extract application deadline"""
+        # Extract key academic requirements
+        cgpa_requirements = self.extract_cgpa_requirements(content)
+        academic_requirements = self.extract_academic_requirements(content)
+        
+        # Extract additional metadata for TF-IDF
+        keywords = self.extract_keywords(content)
+        field_of_study = self.extract_field_of_study(content)
+        country_info = self.extract_country_info(content)
+        
+        scholarship = ScholarshipScraperItem()
+        scholarship['title'] = self.clean_text(title)
+        scholarship['url'] = scholarship_url
+        scholarship['deadline'] = deadline
+        scholarship['description'] = self.clean_text(description)
+        scholarship['eligibility'] = self.clean_text(eligibility)
+        scholarship['application_urls'] = application_urls
+        scholarship['cgpa_requirements'] = cgpa_requirements
+        scholarship['academic_requirements'] = academic_requirements
+        scholarship['keywords'] = keywords
+        scholarship['field_of_study'] = field_of_study
+        scholarship['country_info'] = country_info
+        scholarship['content_length'] = len(content) if content else 0
+        scholarship['scraped_at'] = response.meta.get('download_timestamp')
+        
+        yield scholarship
+
+    def extract_deadline(self, response):
+        """Extract deadline information"""
+        # Look for deadline patterns
         deadline_patterns = [
-            r'(?:deadline|closing date|application deadline)[:\s]+([^\n.,]+)',
-            r'(?:applications close|submissions close)[:\s]+([^\n.,]+)',
-            r'(?:due date|last date)[:\s]+([^\n.,]+)'
+            r'Deadline:\s*([^<\n]+)',
+            r'Application [Dd]eadline:\s*([^<\n]+)',
+            r'Due [Dd]ate:\s*([^<\n]+)',
+            r'Closes?:\s*([^<\n]+)',
         ]
         
+        text_content = response.text
         for pattern in deadline_patterns:
-            match = re.search(pattern, content, re.IGNORECASE)
+            match = re.search(pattern, text_content, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
         
-        return ''
-    
-    def _extract_country(self, title, content):
-        """Extract country information"""
-        # Common countries in scholarships
-        countries = [
-            'Nigeria', 'USA', 'United States', 'UK', 'United Kingdom', 
-            'Canada', 'Australia', 'Germany', 'France', 'Netherlands',
-            'Sweden', 'Norway', 'Denmark', 'Switzerland', 'Belgium'
+        return None
+
+    def extract_description(self, response, content):
+        """Extract scholarship description"""
+        if not content:
+            return None
+            
+        # Look for description sections
+        description_sections = []
+        
+        # Try to find structured description
+        desc_selectors = [
+            '.entry-content p:first-of-type',
+            '.post-content p:first-of-type',
+            'article p:first-of-type'
         ]
         
-        # Check title first
-        for country in countries:
-            if country.lower() in title.lower():
-                return country
+        for selector in desc_selectors:
+            desc = response.css(selector + '::text').getall()
+            if desc:
+                description_sections.extend(desc)
+                break
         
-        # Check content
-        for country in countries:
-            if country.lower() in content.lower():
-                return country
+        # If no structured description, extract from content
+        if not description_sections and content:
+            # Get first few paragraphs as description
+            soup_text = re.sub(r'<[^>]+>', ' ', content)
+            paragraphs = soup_text.split('\n')
+            description_sections = [p.strip() for p in paragraphs[:3] if p.strip()]
         
-        # Pattern matching
-        country_patterns = [
-            r'(?:country|location|host country)[:\s]+([^\n.,]+)',
-            r'(?:study in|based in|located in)[:\s]+([^\n.,]+)'
+        return ' '.join(description_sections) if description_sections else None
+
+    def extract_eligibility(self, response, content):
+        """Extract eligibility information"""
+        if not content:
+            return None
+            
+        # Look for eligibility sections
+        eligibility_patterns = [
+            r'Eligibility[^:]*:?\s*(.+?)(?=\n\n|Application|Requirements:|Scholarship|How to Apply|$)',
+            r'Eligible[^:]*:?\s*(.+?)(?=\n\n|Application|Requirements:|Scholarship|How to Apply|$)',
+            r'Who can apply[^:]*:?\s*(.+?)(?=\n\n|Application|Requirements:|Scholarship|How to Apply|$)',
+            r'Requirements[^:]*:?\s*(.+?)(?=\n\n|Application|Eligibility|Scholarship|How to Apply|$)'
         ]
         
-        for pattern in country_patterns:
-            match = re.search(pattern, content, re.IGNORECASE)
+        text_content = re.sub(r'<[^>]+>', ' ', content)
+        
+        for pattern in eligibility_patterns:
+            match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
             if match:
                 return match.group(1).strip()
         
-        return ''
-    
-    def _extract_level_of_study(self, url, title, content):
-        """Extract level of study"""
-        level_keywords = {
-            'undergraduate': 'Undergraduate',
-            'bachelor': 'Undergraduate',
-            'postgraduate': 'Postgraduate',
-            'masters': 'Masters',
-            'phd': 'PhD',
-            'doctorate': 'PhD',
-            'doctoral': 'PhD'
-        }
+        return None
+
+    def extract_application_urls(self, response, content):
+        """Extract application URLs"""
+        application_urls = []
         
-        # Check URL first
-        for keyword, level in level_keywords.items():
-            if keyword in url.lower():
-                return level
+        # Look for application links
+        app_link_patterns = [
+            r'href="([^"]*apply[^"]*)"',
+            r'href="([^"]*application[^"]*)"',
+            r'href="([^"]*register[^"]*)"',
+            r'href="([^"]*form[^"]*)"'
+        ]
         
-        # Check title and content
-        combined_text = (title + ' ' + content).lower()
-        for keyword, level in level_keywords.items():
-            if keyword in combined_text:
-                return level
+        for pattern in app_link_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            application_urls.extend(matches)
         
-        return ''
-    
-    def _extract_field_of_study(self, content):
-        """Extract field of study"""
+        # Also check for specific application text patterns
+        app_text_patterns = [
+            r'Apply (?:here|now|at):\s*(?:<[^>]*>)*\s*([^<\s]+)',
+            r'Application (?:link|form):\s*(?:<[^>]*>)*\s*([^<\s]+)',
+            r'Visit:\s*(?:<[^>]*>)*\s*([^<\s]+)'
+        ]
+        
+        text_content = re.sub(r'<[^>]+>', ' ', content)
+        for pattern in app_text_patterns:
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            application_urls.extend(matches)
+        
+        # Clean and validate URLs
+        clean_urls = []
+        for url in application_urls:
+            url = url.strip()
+            if url and ('http' in url or '.' in url):
+                if not url.startswith('http'):
+                    url = 'https://' + url
+                clean_urls.append(url)
+        
+        return list(set(clean_urls))  # Remove duplicates
+
+    def extract_cgpa_requirements(self, content):
+        """Extract CGPA/GPA requirements"""
+        if not content:
+            return []
+            
+        cgpa_patterns = [
+            r'CGPA[^0-9]*([0-9]+\.?[0-9]*)',
+            r'GPA[^0-9]*([0-9]+\.?[0-9]*)',
+            r'Grade Point Average[^0-9]*([0-9]+\.?[0-9]*)',
+            r'minimum.*?([0-9]+\.?[0-9]*)\s*(?:CGPA|GPA)',
+            r'([0-9]+\.?[0-9]*)\s*(?:CGPA|GPA|grade point)',
+            r'academic.*?([0-9]+\.?[0-9]*)\s*(?:out of|/)\s*([0-9]+\.?[0-9]*)'
+        ]
+        
+        text_content = re.sub(r'<[^>]+>', ' ', content)
+        requirements = []
+        
+        for pattern in cgpa_patterns:
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    requirements.append('/'.join(match))
+                else:
+                    requirements.append(match)
+        
+        return list(set(requirements))
+
+    def extract_academic_requirements(self, content):
+        """Extract other academic requirements"""
+        if not content:
+            return []
+            
+        academic_patterns = [
+            r'Bachelor[^.]*degree',
+            r'Master[^.]*degree',
+            r'PhD|Doctorate',
+            r'First Class|Second Class|Third Class',
+            r'Honours?|Honor',
+            r'[0-9]+\s*years?\s*(?:of\s*)?(?:experience|study)',
+            r'minimum.*?qualifications?',
+            r'academic.*?performance',
+            r'transcripts?',
+            r'certificates?'
+        ]
+        
+        text_content = re.sub(r'<[^>]+>', ' ', content)
+        requirements = []
+        
+        for pattern in academic_patterns:
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            requirements.extend(matches)
+        
+        return list(set(requirements))
+
+    def extract_keywords(self, content):
+        """Extract keywords for TF-IDF analysis"""
+        if not content:
+            return []
+            
+        # Keywords relevant for scholarship matching
+        keyword_patterns = [
+            r'\b(?:undergraduate|postgraduate|graduate|masters?|phd|doctorate)\b',
+            r'\b(?:engineering|medicine|law|business|science|arts|computer|technology)\b',
+            r'\b(?:scholarship|fellowship|grant|funding|award)\b',
+            r'\b(?:international|domestic|local|global)\b',
+            r'\b(?:women|female|minorities|disabled|refugee)\b',
+            r'\b(?:african|asian|european|american)\b',
+            r'\b(?:stem|research|leadership|community)\b'
+        ]
+        
+        text_content = re.sub(r'<[^>]+>', ' ', content).lower()
+        keywords = []
+        
+        for pattern in keyword_patterns:
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            keywords.extend(matches)
+        
+        return list(set(keywords))
+
+    def extract_field_of_study(self, content):
+        """Extract field of study information"""
+        if not content:
+            return []
+            
         field_patterns = [
-            r'(?:field of study|discipline|subject|major)[:\s]+([^\n.,]+)',
-            r'(?:available for|open to)\s+([^.,]*(?:engineering|science|arts|humanities|business|medicine|law|computer|technology)[^.,]*)'
+            r'\b(?:engineering|computer science|medicine|law|business|economics|mathematics|physics|chemistry|biology|psychology|sociology|anthropology|history|literature|arts|design|architecture|agriculture|environmental|education|journalism|communications?)\b'
         ]
+        
+        text_content = re.sub(r'<[^>]+>', ' ', content).lower()
+        fields = []
         
         for pattern in field_patterns:
-            match = re.search(pattern, content, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            fields.extend(matches)
         
-        return ''
-    
-    def _extract_structured_section(self, response, content, section_type):
-        """Extract structured sections like eligibility or benefits"""
-        if section_type == 'eligibility':
-            headers = ['eligibility', 'requirements', 'who can apply']
-        elif section_type == 'benefits':
-            headers = ['benefits', 'value', 'award', 'coverage']
-        else:
-            return ''
-        
-        # Try to find section headers
-        for header in headers:
-            header_selectors = [
-                f'h2:contains("{header.title()}")',
-                f'h3:contains("{header.title()}")',
-                f'h4:contains("{header.title()}")',
-                f'strong:contains("{header.title()}")'
-            ]
+        return list(set(fields))
+
+    def extract_country_info(self, content):
+        """Extract country/region information"""
+        if not content:
+            return []
             
-            for selector in header_selectors:
-                header_element = response.css(selector).get()
-                if header_element:
-                    # Extract content following this header
-                    section_content = self._extract_section_content(response, selector)
-                    if section_content:
-                        return section_content
-        
-        # Fallback to regex patterns
-        if section_type == 'eligibility':
-            patterns = [
-                r'(?:eligibility|requirements|who can apply)(?:[:\s]+)([^#]+?)(?:benefits|value|award|how to apply|application process)',
-                r'(?:eligible candidates|eligible applicants)(?:[:\s]+)([^#]+?)(?:how to apply|application|documents)'
-            ]
-        else:  # benefits
-            patterns = [
-                r'(?:benefits|value|award|scholarship value)(?:[:\s]+)([^#]+?)(?:how to apply|application process|eligibility)'
-            ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
-            if match:
-                return match.group(1).strip()
-        
-        return ''
-    
-    def _extract_section_content(self, response, header_selector):
-        """Extract content following a header"""
-        try:
-            header = response.css(header_selector)[0]
-            content_parts = []
-            
-            for element in header.xpath('following-sibling::*'):
-                if element.root.tag in ['h2', 'h3', 'h4']:
-                    break
-                element_text = ' '.join(element.css('::text').getall())
-                if element_text.strip():
-                    content_parts.append(element_text)
-            
-            return ' '.join(content_parts).strip()
-        except (IndexError, AttributeError):
-            return ''
-    
-    def _extract_application_link(self, response, content):
-        """Extract application link"""
-        # Try to find application sections first
-        apply_headers = ['apply', 'application', 'how to apply']
-        
-        for header in apply_headers:
-            header_selectors = [
-                f'h2:contains("{header.title()}")',
-                f'h3:contains("{header.title()}")',
-                f'h4:contains("{header.title()}")'
-            ]
-            
-            for selector in header_selectors:
-                if response.css(selector):
-                    # Look for links in this section
-                    links = response.css(f'{selector} ~ * a::attr(href)').getall()
-                    if links:
-                        return links[0]
-        
-        # Try direct link selectors
-        apply_link_selectors = [
-            'a:contains("Apply")::attr(href)',
-            'a:contains("Application")::attr(href)',
-            'a[href*="apply"]::attr(href)',
-            'a[href*="application"]::attr(href)'
+        # Common countries and regions mentioned in scholarships
+        country_patterns = [
+            r'\b(?:USA|United States|America|UK|United Kingdom|Britain|Canada|Australia|Germany|France|Netherlands|Sweden|Norway|Denmark|Switzerland|Japan|South Korea|Singapore|China|India|South Africa|Kenya|Nigeria|Ghana|Rwanda|Uganda|Tanzania|Ethiopia)\b'
         ]
         
-        for selector in apply_link_selectors:
-            link = response.css(selector).get()
-            if link:
-                return link
+        text_content = re.sub(r'<[^>]+>', ' ', content)
+        countries = []
         
-        # Regex pattern in content
-        link_pattern = r'(?:apply here|application link)[:\s]+(https?://[^\s]+)'
-        match = re.search(link_pattern, content, re.IGNORECASE)
-        if match:
-            return match.group(1)
+        for pattern in country_patterns:
+            matches = re.findall(pattern, text_content, re.IGNORECASE)
+            countries.extend(matches)
         
-        return ''
-    
-    def _extract_email(self, content):
-        """Extract contact email"""
-        email_pattern = r'[\w\.-]+@[\w\.-]+\.\w+'
-        match = re.search(email_pattern, content)
-        return match.group(0) if match else ''
-    
-    def _extract_gender_requirements(self, title, content):
-        """Extract gender requirements"""
-        # Check title first
-        title_lower = title.lower()
-        if 'women' in title_lower or 'female' in title_lower:
-            return 'Female'
-        elif 'men' in title_lower or 'male' in title_lower:
-            return 'Male'
+        return list(set(countries))
+
+    def clean_text(self, text):
+        """Clean and normalize text"""
+        if not text:
+            return None
+            
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', ' ', text)
         
-        # Pattern matching in content
-        gender_pattern = r'(?:gender|women only|female only|male only)[:\s]+([^\n.,]+)'
-        match = re.search(gender_pattern, content, re.IGNORECASE)
-        return match.group(1).strip() if match else ''
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Remove special characters but keep basic punctuation
+        text = re.sub(r'[^\w\s\.,;:!?()-]', ' ', text)
+        
+        return text.strip()
+
+# additional utility functions
+def save_to_json(data, filename='scholarships.json'):
+    """Save scraped data to JSON file"""
+    import json
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def run_spider():
+    """Run the spider programmatically"""
+    from scrapy.crawler import CrawlerProcess
     
-    def _extract_nationality_requirements(self, content):
-        """Extract nationality requirements"""
-        nationality_pattern = r'(?:nationality|citizen|citizenship)[:\s]+([^\n.,]+)'
-        match = re.search(nationality_pattern, content, re.IGNORECASE)
-        return match.group(1).strip() if match else ''
+    process = CrawlerProcess({
+        'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'FEEDS': {
+            'scholarships.json': {'format': 'json'},
+            'scholarships.csv': {'format': 'csv'},
+        }
+    })
     
-    def _extract_institution_requirements(self, content):
-        """Extract institution requirements"""
-        institution_pattern = r'(?:institution|university|college)[:\s]+([^\n.,]+)'
-        match = re.search(institution_pattern, content, re.IGNORECASE)
-        return match.group(1).strip() if match else ''
-    
-    def _extract_cgpa_requirements(self, content):
-        """Extract CGPA requirements"""
-        cgpa_pattern = r'(?:cgpa|gpa|grade)[:\s]+([^\n.,]+)'
-        match = re.search(cgpa_pattern, content, re.IGNORECASE)
-        return match.group(1).strip() if match else ''
-    
-    def handle_error(self, failure):
-        """Handle request errors"""
-        self.logger.error(f"Request failed: {failure.request.url} - {failure.value}")
+    process.crawl(ScholarshipSpider)
+    process.start()
+
+if __name__ == '__main__':
+    run_spider()

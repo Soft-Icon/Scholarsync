@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import json
 import re
 from dotenv import load_dotenv # type: ignore
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 load_dotenv()
 
 
@@ -15,7 +16,13 @@ class AIService:
             raise ValueError("GEMINI_API_KEY environment variable is required")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-1.5-flash',
+                                        safety_settings={
+                                            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                                            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                                            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                                            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                                        })
 
     def clean_scholarship_data(self, raw_scholarship_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -29,14 +36,17 @@ class AIService:
 
         Please return a JSON object with the following standardized fields:
         - title: Clean scholarship title
-        - provider_organization: Organization providing the scholarship
+        - provider_organization: Organization providing the scholarship (infer if not directly available)
         - deadline: Application deadline (format: YYYY-MM-DD if possible)
-        - country: Country where scholarship is offered
-        - level_of_study: undergraduate/masters/phd/all
+        - country_info: Country or region where scholarship is offered (infer if not directly available)
+        - level_of_study: Inferred level of study (e.g., undergraduate, masters, phd, all) (infer if not directly available)
         - field_of_study: Field or subject area
         - eligibility: Clean eligibility criteria
-        - amount_benefits: Scholarship amount or benefits
+        - academic_requirements: Key academic requirements
+        - cgpa_requirements: CGPA/GPA requirements
+        - amount_benefits: Scholarship amount or benefits (if available)
         - application_link: Application URL
+        - keywords: Relevant keywords for TF-IDF
         - contact_email: Contact email if available
 
         Return only the JSON object, no additional text.
@@ -52,6 +62,9 @@ class AIService:
                 cleaned_data = json.loads(json_match.group())
                 return cleaned_data
             
+            return raw_scholarship_data
+        except genai.APIError as e:
+            print(f"Gemini API error cleaning scholarship data: {e}")
             return raw_scholarship_data
         except Exception as e:
             print(f"Error cleaning scholarship data: {e}")
@@ -76,9 +89,9 @@ class AIService:
 
         Scholarship:
         - Title: {scholarship.get('title', 'N/A')}
-        - Level Required: {scholarship.get('level_of_study', 'N/A')}
+        - Level Required: {scholarship.get('academic_requirements', 'N/A')}
         - Field: {scholarship.get('field_of_study', 'N/A')}
-        - Country: {scholarship.get('country', 'N/A')}
+        - Country: {scholarship.get('country_info', 'N/A')}
         - Eligibility: {scholarship.get('eligibility', 'N/A')}
 
         Consider these factors:
@@ -100,6 +113,9 @@ class AIService:
             if match_number:
                 return min(100, max(0, int(match_number[0])))
             return 0
+        except genai.APIError as e:
+            print(f"Gemini API error calculating match percentage: {e}")
+            return 0
         except Exception as e:
             print(f"Error calculating match percentage: {e}")
             return 0
@@ -111,7 +127,16 @@ class AIService:
         recommendations = []
         
         for scholarship in scholarships:
-            match_percentage = self.calculate_match_percentage(user_profile, scholarship)
+            # Before sending to clean_scholarship_data, ensure keywords is a list if it's a JSON string
+            if isinstance(scholarship.get('keywords'), str):
+                try:
+                    scholarship['keywords'] = json.loads(scholarship['keywords'])
+                except json.JSONDecodeError:
+                    scholarship['keywords'] = [] # Default to empty list if decoding fails
+            
+            # Clean and standardize scholarship data before processing
+            cleaned_scholarship = self.clean_scholarship_data(scholarship)
+            match_percentage = self.calculate_match_percentage(user_profile, cleaned_scholarship)
             
             if match_percentage > 30:  # Only recommend if match is above 30%
                 recommendation = {
@@ -158,6 +183,9 @@ class AIService:
         try:
             response = self.model.generate_content(prompt)
             return response.text.strip()
+        except genai.APIError as e:
+            print(f"Gemini API error generating AI response: {e}")
+            return "I'm sorry, I'm having trouble connecting to the AI. Please try again later."
         except Exception as e:
             print(f"Error generating AI response: {e}")
             return "I'm sorry, I'm having trouble processing your request right now. Please try again later or contact support for assistance."
@@ -183,6 +211,9 @@ class AIService:
         try:
             response = self.model.generate_content(prompt)
             return response.text.strip()
+        except genai.APIError as e:
+            print(f"Gemini API error generating personal statement tips: {e}")
+            return "I'm sorry, I'm having trouble connecting to the AI for tips. Please try again later."
         except Exception as e:
             print(f"Error generating personal statement tips: {e}")
             return "Here are some general tips for writing a strong personal statement: 1) Start with a compelling hook, 2) Show don't tell with specific examples, 3) Connect your goals to the scholarship, 4) Be authentic and genuine, 5) Proofread carefully."

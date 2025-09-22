@@ -9,8 +9,8 @@
 
 BOT_NAME = "scholarship_scraper"
 
-SPIDER_MODULES = ["scholarship_scraper.spiders"]
-NEWSPIDER_MODULE = "scholarship_scraper.spiders"
+SPIDER_MODULES = ["scholarship_scraper.scholarship_scraper.spiders"]
+NEWSPIDER_MODULE = "scholarship_scraper.scholarship_scraper.spiders"
 
 ADDONS = {}
 
@@ -30,14 +30,12 @@ DOWNLOAD_DELAY = 1
 
 # Enable and configure item pipelines
 ITEM_PIPELINES = {
-    'scholarship_scraper.pipelines.ValidationPipeline': 200,
-    'scholarship_scraper.pipelines.DuplicatesPipeline': 300,
-    'scholarship_scraper.pipelines.ScholarshipDatabasePipeline': 400,
+    'scholarship_scraper.scholarship_scraper.pipelines.ScholarshipDatabasePipeline': 400,
 }
 
 # Database configuration
 DATABASE = {
-    'path': 'src/database/app.db',  # Path to SQLite database file
+    'path': '../src/database/app.db',  # Path to SQLite database file, relative to scholarship_scraper dir
 }
 
 # Configure AutoThrottle for better scraping behavior

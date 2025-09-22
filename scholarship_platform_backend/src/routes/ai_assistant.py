@@ -1,7 +1,10 @@
 from flask import Blueprint, request, jsonify, session
 from src.models.user import User
+from src.models.scholarship import Scholarship
+from src.models.application import Application
 from src.services.ai_service import AIService
 from src.database import db
+import datetime
 
 ai_assistant_bp = Blueprint('ai_assistant', __name__, url_prefix='/api/ai')
 
@@ -34,10 +37,12 @@ def chat():
         
         return jsonify({
             'response': ai_response,
-            'timestamp': '2025-08-07T06:40:00Z'  # You might want to use actual timestamp
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
         }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': 'Failed to generate response'}), 500
+        return jsonify({'error': 'An unexpected error occurred: ' + str(e)}), 500
 
 @ai_assistant_bp.route('/personal-statement-tips', methods=['POST'])
 def personal_statement_tips():
@@ -59,7 +64,6 @@ def personal_statement_tips():
     # Get scholarship info if provided
     scholarship_info = None
     if scholarship_id:
-        from src.models.scholarship import Scholarship
         scholarship = Scholarship.query.get(scholarship_id)
         if scholarship:
             scholarship_info = {
@@ -74,8 +78,10 @@ def personal_statement_tips():
         return jsonify({
             'tips': tips
         }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': 'Failed to generate tips'}), 500
+        return jsonify({'error': 'An unexpected error occurred: ' + str(e)}), 500
 
 @ai_assistant_bp.route('/match-scholarships', methods=['POST'])
 def match_scholarships():
@@ -99,7 +105,6 @@ def match_scholarships():
     }
     
     # Get all scholarships
-    from src.models.scholarship import Scholarship
     scholarships = Scholarship.query.all()
     
     scholarship_data = []
@@ -120,7 +125,6 @@ def match_scholarships():
         recommendations = ai_service.get_scholarship_recommendations(user_profile, scholarship_data)
         
         # Update user's applications with match percentages
-        from src.models.application import Application
         for rec in recommendations:
             # Check if application exists
             existing_app = Application.query.filter_by(
@@ -146,5 +150,6 @@ def match_scholarships():
             'recommendations': recommendations
         }), 200
     except Exception as e:
-        return jsonify({'error': 'Failed to generate recommendations'}), 500
+        db.session.rollback()
+        return jsonify({'error': 'Failed to generate recommendations or update applications: ' + str(e)}), 500
 
