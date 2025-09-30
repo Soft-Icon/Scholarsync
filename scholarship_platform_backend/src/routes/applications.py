@@ -9,6 +9,7 @@ applications_bp = Blueprint('applications', __name__, url_prefix='/api/applicati
 @applications_bp.route('/', methods=['GET'])
 def get_user_applications():
     if 'user_id' not in session:
+        print("DEBUG: Unauthorized access attempt to get_user_applications, no user_id in session")
         return jsonify({'error': 'Authentication required'}), 401
     
     user_id = session['user_id']

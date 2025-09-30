@@ -48,11 +48,11 @@ const Signup = ({ onSignup }) => {
     try {
       const response = await fetch(`${BASE_URL}/api/auth/signup`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
-        credentials: 'include',
       })
 
       const data = await response.json()

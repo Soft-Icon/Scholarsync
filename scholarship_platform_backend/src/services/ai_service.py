@@ -1,10 +1,11 @@
 import os
-import google.generativeai as genai # type: ignore
 from typing import List, Dict, Any
 import json
 import re
 from dotenv import load_dotenv # type: ignore
+import google.generativeai as genai # type: ignore
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google.generativeai.client import ga_exceptions
 load_dotenv()
 
 
@@ -16,7 +17,7 @@ class AIService:
             raise ValueError("GEMINI_API_KEY environment variable is required")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash',
+        self.model = genai.GenerativeModel('gemini-2.5-flash',
                                         safety_settings={
                                             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
                                             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -63,7 +64,7 @@ class AIService:
                 return cleaned_data
             
             return raw_scholarship_data
-        except genai.APIError as e:
+        except ga_exceptions.ResponseError as e:
             print(f"Gemini API error cleaning scholarship data: {e}")
             return raw_scholarship_data
         except Exception as e:
@@ -113,7 +114,7 @@ class AIService:
             if match_number:
                 return min(100, max(0, int(match_number[0])))
             return 0
-        except genai.APIError as e:
+        except ga_exceptions.ResponseError as e:
             print(f"Gemini API error calculating match percentage: {e}")
             return 0
         except Exception as e:
@@ -183,7 +184,7 @@ class AIService:
         try:
             response = self.model.generate_content(prompt)
             return response.text.strip()
-        except genai.APIError as e:
+        except ga_exceptions.ResponseError as e:
             print(f"Gemini API error generating AI response: {e}")
             return "I'm sorry, I'm having trouble connecting to the AI. Please try again later."
         except Exception as e:
@@ -211,7 +212,7 @@ class AIService:
         try:
             response = self.model.generate_content(prompt)
             return response.text.strip()
-        except genai.APIError as e:
+        except ga_exceptions.ResponseError as e:
             print(f"Gemini API error generating personal statement tips: {e}")
             return "I'm sorry, I'm having trouble connecting to the AI for tips. Please try again later."
         except Exception as e:

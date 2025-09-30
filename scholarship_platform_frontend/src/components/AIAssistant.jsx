@@ -54,6 +54,7 @@ const AIAssistant = ({ user, onLogout }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ message: inputMessage }),
       })
 

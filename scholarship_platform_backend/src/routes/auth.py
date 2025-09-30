@@ -7,12 +7,11 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
+    print("DEBUG: Signup data received -", data)
     
-    # Check if user already exists
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'Email already registered'}), 400
     
-    # Create new user
     user = User(
         full_name=data['full_name'],
         email=data['email'],
@@ -29,8 +28,22 @@ def signup():
     
     db.session.add(user)
     db.session.commit()
+    print(f"DEBUG: New user created with ID {user.id}")
     
-    return jsonify({'message': 'User created successfully'}), 201
+    # 🔑 automatically log in the new user
+    session['user_id'] = user.id
+    print(f"DEBUG: signup - set session user_id: {session['user_id']}")
+    session['is_admin'] = user.is_admin
+
+
+    return jsonify({
+        'message': 'User created successfully',
+        'user': {
+            'id': user.id,
+            'full_name': user.full_name,
+            'email': user.email
+        }
+    }), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -64,8 +77,8 @@ def get_current_user():
         print("DEBUG: get_current_user - user_id not in session")
         return jsonify({'error': 'Not authenticated'}), 401
     
-    print(f"DEBUG: get_current_user - session user_id: {session.get('user_id')}")
     user = User.query.get(session['user_id'])
+    print(f"DEBUG: get_current_user - session user_id: {session.get('user_id')}")
     if not user:
         return jsonify({'error': 'User not found'}), 404
     

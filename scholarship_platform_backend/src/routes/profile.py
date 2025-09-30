@@ -7,6 +7,7 @@ profile_bp = Blueprint('profile', __name__, url_prefix='/api/profile')
 @profile_bp.route('/', methods=['GET'])
 def get_profile():
     if 'user_id' not in session:
+        print("DEBUG: Unauthorized access attempt to get_profile, no user_id in session and can't retrieve user")
         return jsonify({'error': 'Authentication required'}), 401
     
     user = User.query.get(session['user_id'])
@@ -30,6 +31,7 @@ def get_profile():
 @profile_bp.route('/', methods=['PUT'])
 def update_profile():
     if 'user_id' not in session:
+        print("DEBUG: Unauthorized access attempt to update_profile, no user_id in session and can't update user")
         return jsonify({'error': 'Authentication required'}), 401
     
     user = User.query.get(session['user_id'])

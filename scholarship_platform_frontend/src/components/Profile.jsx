@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import Sidebar from './Sidebar'
 
+
 const Profile = ({ user, onLogout }) => {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -33,32 +34,44 @@ const Profile = ({ user, onLogout }) => {
 
   const fetchProfile = async () => {
     try {
-      const response = await fetch('/api/profile/')
+      const response = await fetch('/api/profile/',{
+        credentials: 'include'
+      })
       if (response.ok) {
         const data = await response.json()
-        setFormData(data)
+        setFormData(data);
+      } else if (response.status === 401) {
+        setMessage('Please log in to view your profile.');
+        // if (typeof onLogout === 'function') onLogout()
       }
     } catch (error) {
       console.error('Failed to fetch profile:', error)
+      setMessage('Error loading profile. Try again later.');
     }
   }
 
   const fetchCompletion = async () => {
     try {
-      const response = await fetch('/api/profile/completion')
+      const response = await fetch('/api/profile/completion', {
+        credentials: 'include'
+      })
       if (response.ok) {
         const data = await response.json()
         setCompletion(data)
+      } else if (response.status === 401) {
+        setMessage('Please log in to view your profile.');
+        // if (typeof onLogout === 'function') onLogout()
       }
     } catch (error) {
       console.error('Failed to fetch completion:', error)
+      setMessage('Error loading profile completion. Try again later.')
     }
   }
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     })
   }
 
@@ -77,6 +90,7 @@ const Profile = ({ user, onLogout }) => {
     try {
       const response = await fetch('/api/profile/', {
         method: 'PUT',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -88,6 +102,9 @@ const Profile = ({ user, onLogout }) => {
       if (response.ok) {
         setMessage('Profile updated successfully!')
         fetchCompletion() // Refresh completion percentage
+      } else if (response.status === 401) {
+        setMessage('Please log in to update your profile.')
+        // if (typeof onLogout === 'function') onLogout()
       } else {
         setMessage(data.error || 'Update failed')
       }

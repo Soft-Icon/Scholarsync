@@ -84,7 +84,7 @@
         async function getUsers() {
             const resultElementId = 'get-users-result';
             try {
-                const response = await fetch(API_BASE_URL);
+                const response = await fetch(API_BASE_URL, { credentials: 'include' });
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 displayResult(resultElementId, data);
@@ -105,6 +105,7 @@
             try {
                 const response = await fetch(API_BASE_URL, {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, email })
                 });
@@ -128,7 +129,7 @@
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE_URL}/${userId}`);
+                const response = await fetch(`${API_BASE_URL}/${userId}`, { credentials: 'include' });
                  if (response.status === 404) throw new Error('User not found');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
@@ -159,6 +160,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/${userId}`, {
                     method: 'PUT',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updateData)
                 });
@@ -184,7 +186,7 @@
             }
             try {
                 const response = await fetch(`${API_BASE_URL}/${userId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE', credentials: 'include'
                 });
                 if (response.status === 404) throw new Error('User not found');
                 if (!response.ok && response.status !== 204) throw new Error(`HTTP error! status: ${response.status}`); // Allow 204

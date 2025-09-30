@@ -47,6 +47,7 @@ const AdminPanel = ({ user, onLogout }) => {
     try {
       const response = await fetch('/api/scholarships/', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

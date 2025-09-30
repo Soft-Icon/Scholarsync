@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from itemadapter import ItemAdapter
 from scrapy.exceptions import DropItem 
-from .ai_service import AIService
+from src.services.ai_service import AIService
 import json
 
 # Ensure the path for ai_service is correct if it's not a direct sibling of pipelines.py
@@ -108,6 +108,10 @@ class ScholarshipDatabasePipeline:
             spider.logger.error(f"Cleaned data is empty for: {adapter.get('title')}. Dropping item.")
             raise DropItem(f"Cleaned data is empty for: {adapter.get('title')}")
 
+        for key in cleaned_data:
+            if isinstance(cleaned_data[key], list):
+                cleaned_data[key] = str(cleaned_data[key]) # Convert lists to strings for DB storage
+                
         # Check if scholarship already exists (avoid duplicates)
         check_query = "SELECT id FROM scholarships WHERE source_url = ?"
         self.cursor.execute(check_query, (source_url,))
@@ -117,6 +121,7 @@ class ScholarshipDatabasePipeline:
             if existing:
                 self.update_scholarship(cleaned_data, source_url, existing[0], spider)
             else:
+                print('inserting--------------------------------------------------------------------------------')
                 self.insert_scholarship(cleaned_data, source_url, spider)
             return item
         except sqlite3.Error as e:
