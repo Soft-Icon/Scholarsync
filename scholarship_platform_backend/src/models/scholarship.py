@@ -29,3 +29,16 @@ class Scholarship(db.Model):
         return f'<Scholarship {self.title}>'
 
 
+class SuggestedScholarship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarship.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    match_p = db.Column(db.Float, nullable=False)  # Match percentage
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    # For easier access to scholarship title in admin interface
+    title = db.Column(db.String(500), nullable=False)
+    
+    def __repr__(self):
+        return f'<SuggestedScholarship {self.title}>'
+

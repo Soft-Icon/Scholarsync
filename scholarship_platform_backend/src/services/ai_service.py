@@ -121,6 +121,83 @@ class AIService:
             print(f"Error calculating match percentage: {e}")
             return 0
 
+    def get_suggested_scholarships(self, user_profile: Dict[str, Any], scholarships: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Get top 15 scholarship suggestions for a user based on match percentage
+        """
+        suggestions = []
+        print(user_profile, scholarships)
+
+        s_scholarships = ""
+        for sch in scholarships:
+            s_scholarships += (
+                f"Scholarship ID: {sch.get('id', 'N/A')}\n"
+                f"Title: {sch.get('title', 'N/A')}\n"
+                f"Provider: {sch.get('provider_organization', 'N/A')}\n"
+                f"Description: {sch.get('description', 'N/A')}\n"
+                f"Deadline: {sch.get('deadline', 'N/A')}\n"
+                f"Country: {sch.get('country_info', 'N/A')}\n"
+                f"Level of Study: {sch.get('level_of_study', 'N/A')}\n"
+                f"Field of Study: {sch.get('field_of_study', 'N/A')}\n"
+                f"Eligibility: {sch.get('eligibility', 'N/A')}\n"
+                f"Academic Requirements: {sch.get('academic_requirements', 'N/A')}\n"
+                f"CGPA Requirements: {sch.get('cgpa_requirements', 'N/A')}\n"
+                f"Amount / Benefits: {sch.get('amount_benefits', 'N/A')}\n"
+                "----------------------\n"
+            )
+
+        prompt = f"""
+        Calculate a match percentage (0-100) between this user profile and scholarship opportunities.
+
+        User Profile:
+        - Level of Study: {user_profile.get('level_of_study', 'N/A')}
+        - Field of Study: {user_profile.get('course_of_study', 'N/A')}
+        - Institution: {user_profile.get('institution', 'N/A')}
+        - Academic Performance: {user_profile.get('academic_performance', 'N/A')}
+        - State of Origin: {user_profile.get('state_of_origin', 'N/A')}
+        - Gender: {user_profile.get('gender', 'N/A')}
+        - Religion: {user_profile.get('religion', 'N/A')}
+        - Skills & Interests: {user_profile.get('skills_interests', 'N/A')}
+
+        Scholarships:
+        {s_scholarships}
+
+        Consider these factors:
+        1. Level of study match (30%)
+        2. Field of study relevance (25%)
+        3. Eligibility criteria alignment (20%)
+        4. Geographic relevance (15%)
+        5. Skills/interests alignment (10%)
+
+        Return a response in the format:
+        Scholarship ID: <ID>, Match Percentage: <0-100>
+        One line per scholarship. Provide only the top 10 matches.
+        """
+        
+        try:
+            print("Generating suggested scholarships with Gemini AI...")
+            response = self.model.generate_content(prompt)
+            match_text = response.text.strip()
+            
+            for line in match_text.split('\n'):
+                match = re.match(r'Scholarship ID:\s*(\d+),\s*Match Percentage:\s*(\d+)', line)
+                if match:
+                    sch_id = int(match.group(1))
+                    match_percentage = int(match.group(2))
+                    scholarship = next((sch for sch in scholarships if sch.get('id') == sch_id), None)
+                    if scholarship:
+                        suggestions.append({
+                            **scholarship,
+                            'match_percentage': match_percentage
+                        })
+            
+            return suggestions[:10]  # Return top 10 suggestions
+        except ga_exceptions.ResponseError as e:
+            print(f"Gemini API error getting suggested scholarships: {e}")
+            return []
+        except Exception as e:
+            print(f"Error getting suggested scholarships: {e}")
+            return []
     def get_scholarship_recommendations(self, user_profile: Dict[str, Any], scholarships: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Get personalized scholarship recommendations for a user

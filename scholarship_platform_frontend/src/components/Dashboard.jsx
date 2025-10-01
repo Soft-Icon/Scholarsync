@@ -31,7 +31,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const triggerAIMatching = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/ai/match-scholarships`, {
+      const response = await fetch(`/api/ai/match-scholarships`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,7 +50,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchSuggestedScholarships = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/scholarships/suggested`, { credentials: 'include' })
+      const response = await fetch(`/api/scholarships/suggested`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setSuggestedScholarships(data.suggested_scholarships || [])
@@ -64,7 +64,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchApplications = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/applications/`, { credentials: 'include' })
+      const response = await fetch(`/api/applications/`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setApplications(data.applications || [])
@@ -81,7 +81,7 @@ const Dashboard = ({ user, onLogout }) => {
         if (value) params.append(key, value)
       })
 
-      const response = await fetch(`${BASE_URL}/api/scholarships/?${params}`, { credentials: 'include' })
+      const response = await fetch(`/api/scholarships/?${params}`, { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setSearchResults(data.scholarships || [])

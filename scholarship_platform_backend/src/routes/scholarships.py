@@ -1,10 +1,19 @@
 from flask import Blueprint, request, jsonify, session
-from src.models.scholarship import Scholarship
+from src.models.scholarship import Scholarship, SuggestedScholarship
 from src.models.application import Application
+from src.models.user import User
 from src.services.scraper_service import ScraperService
 from src.database import db
 import json
 from datetime import datetime
+
+# Ensure the path for ai_service is correct if it's not a direct sibling of pipelines.py
+# For debugging, we'll use a direct import, but consider a more robust import strategy if issues persist.
+try:
+    from src.services.ai_service import AIService as BackendAIService
+except ImportError:
+    BackendAIService = None # Fallback if not found
+
 
 scholarships_bp = Blueprint('scholarships', __name__, url_prefix='/api/scholarships')
 
@@ -129,6 +138,86 @@ def get_suggested_scholarships():
     
     user_id = session['user_id']
     
+    suggested_scholarships = SuggestedScholarship.query.filter_by(user_id=user_id)
+    if not suggested_scholarships.count():
+        all_scholarships = Scholarship.query.all()
+        user_profile = User.query.get(user_id)
+        if not user_profile:
+            return jsonify({'error': 'User not found'}), 404
+        
+        if BackendAIService:
+            try:
+                ai_service_instance = BackendAIService()
+                print("AIService instance created successfully.")
+                print("Fetching suggested scholarships using AIService...")
+                suggested_scholarships = ai_service_instance.get_suggested_scholarships(
+                    user_profile=model_to_dict(user_profile),
+                    scholarships=[model_to_dict(s) for s in all_scholarships]
+                )
+                print(f"Suggested Scholarships: ", suggested_scholarships)
+                # Clear existing suggested scholarships
+                SuggestedScholarship.query.filter_by(user_id=user_id).delete()
+                db.session.commit()
+
+                for sch in suggested_scholarships:
+                    print(sch)
+                    suggestion = SuggestedScholarship(
+                        scholarship_id=sch['id'],
+                        user_id=user_id,
+                        match=sch.get('match_percentage', 0),
+                        title=sch.get('title', '')
+                    )
+                    db.session.add(suggestion)
+                db.session.commit()
+
+            except Exception as e:
+                print("Error fetching suggested scholarships:", e)
+        else:
+            print("AIService not available. Skipping AI-based suggestions.")
+    
+    suggested_scholarships = SuggestedScholarship.query.filter_by(user_id=user_id)
+    if not suggested_scholarships.count():
+        return jsonify({'message': 'No suggested scholarships available'}), 200
+    else:
+        suggested_ids = [s.scholarship_id for s in suggested_scholarships]
+        scholarships = Scholarship.query.filter(Scholarship.id.in_(suggested_ids)).all()
+        scholarship_map = {s.id: s for s in scholarships}
+        
+        suggested = []
+        for s in suggested_scholarships:
+            sch = scholarship_map.get(s.scholarship_id)
+            if sch:
+                suggested.append({
+                    'id': sch.id,
+                    'title': sch.title,
+                    'country_info': sch.country_info,
+                    'deadline': sch.deadline,
+                    'level_of_study': sch.level_of_study,
+                    'field_of_study': sch.field_of_study,
+                    'match_percentage': s.match_p,
+                    'description': sch.description,
+                    'provider_organization': sch.provider_organization,
+                    'eligibility': sch.eligibility,
+                    'academic_requirements': sch.academic_requirements,
+                    'cgpa_requirements': sch.cgpa_requirements,
+                    'amount_benefits': sch.amount_benefits,
+                    'application_link': sch.application_link,
+                    'contact_email': sch.contact_email,
+                    'keywords': json.loads(sch.keywords) if sch.keywords else [],
+                    'source_url': sch.source_url,
+                    'source_website': sch.source_website,
+                    'extracted_date': sch.extracted_date
+                })
+        
+        # Sort by match percentage
+        suggested.sort(key=lambda x: x['match_percentage'], reverse=True)
+        
+        return jsonify({'suggested_scholarships': suggested}), 200
+
+    
+    
+
+    
     # Get user's applications with match percentages
     applications = db.session.query(Application, Scholarship).join(
         Scholarship, Application.scholarship_id == Scholarship.id
@@ -177,3 +266,7 @@ def trigger_scrape():
     except Exception as e:
         return jsonify({'error': f'Failed to initiate scraping: {e}'}), 500
 
+
+def model_to_dict(model):
+    """Convert SQLAlchemy model instance to dictionary"""
+    return {c.name: getattr(model, c.name) for c in model.__table__.columns}

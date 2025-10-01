@@ -55,7 +55,7 @@ const Profile = ({ user, onLogout }) => {
       const response = await fetch('/api/profile/completion', {
         credentials: 'include'
       })
-      if (response.ok) {
+      if (response.ok) {  
         const data = await response.json()
         setCompletion(data)
       } else if (response.status === 401) {

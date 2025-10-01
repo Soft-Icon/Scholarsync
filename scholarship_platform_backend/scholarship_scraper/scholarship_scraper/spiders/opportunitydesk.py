@@ -385,7 +385,8 @@ class ScholarshipSpider(scrapy.Spider):
         text = re.sub(r'[^\w\s\.,;:!?()-]', ' ', text)
         
         return text.strip()
-
+ 
+ 
 # additional utility functions
 def save_to_json(data, filename='scholarships.json'):
     """Save scraped data to JSON file"""

@@ -43,14 +43,14 @@ def create_app():
     init_db(app)
 
     # --- Initial Scrape ---
-    with app.app_context():
-        if Scholarship.query.count() == 0:
-            print("No scholarships found in database. Initiating initial scrape...")
-            scraper = ScraperService()
-            scraper.run_spider()
-            print("Initial scrape completed.")
-        else:
-            print(f"{Scholarship.query.count()} scholarships already in database.")
+    # with app.app_context():
+    #     if Scholarship.query.count() == 0:
+    #         print("No scholarships found in database. Initiating initial scrape...")
+    #         scraper = ScraperService()
+    #         scraper.run_spider()
+    #         print("Initial scrape completed.")
+    #     else:
+    #         print(f"{Scholarship.query.count()} scholarships already in database.")
 
     return app
 
